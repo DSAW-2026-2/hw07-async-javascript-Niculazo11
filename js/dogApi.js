@@ -1,15 +1,18 @@
 "use strict";
 
-// Full (non-random) list of images for the breed. Every visitor gets the
-// same fixed pair of Pancho models, since we always take the first two.
+
 const DOG_LIST_URL = "https://dog.ceo/api/breed/dachshund/images";
 
-// Selections are stored per user: "selectedPancho_<username>"
+
 const SELECTED_DOG_PREFIX = "selectedPancho_";
 
-// Reuses the same localStorage key the join form on index.html already saves,
-// so a user who joined there doesn't have to type their name again here.
+
 const CURRENT_USER_KEY = "name";
+
+
+const SELECTED_CLASSES = ["ring-4", "ring-yellow-400"];
+
+let pendingDogChoice = null;
 
 async function getDachshunds() {
 
@@ -62,57 +65,15 @@ function getSelectedDog(username) {
     return localStorage.getItem(SELECTED_DOG_PREFIX + user);
 }
 
-function displayDogs(dogs, container) {
+function markSelected(images, chosenImage) {
 
-    if (!container) {
-        return;
-    }
+    images.forEach(function (img) {
 
-    container.innerHTML = "";
-
-    dogs.forEach((dog, index) => {
-
-        const dogCard = document.createElement("div");
-
-        dogCard.classList.add("dog-option");
-
-        dogCard.innerHTML = `
-            <img src="${dog}" alt="Dachshund Pancho option ${index + 1}">
-            <button type="button">Choose Pancho</button>
-        `;
-
-        const button = dogCard.querySelector("button");
-
-        button.addEventListener("click", function () {
-
-            const username = getCurrentUsername();
-            const nameError = document.getElementById("nameError");
-
-            if (!username) {
-
-                if (nameError) {
-                    nameError.textContent = "Please enter a username before choosing your Pancho.";
-                }
-
-                const nameInput = document.getElementById("name");
-
-                if (nameInput) {
-                    nameInput.focus();
-                }
-
-                return;
-            }
-
-            if (nameError) {
-                nameError.textContent = "";
-            }
-
-            saveSelectedDog(dog, username);
-
-            alert("Pancho selected! It'll be waiting for you on the home page.");
-        });
-
-        container.appendChild(dogCard);
+        if (img === chosenImage) {
+            img.classList.add(...SELECTED_CLASSES);
+        } else {
+            img.classList.remove(...SELECTED_CLASSES);
+        }
     });
 }
 
@@ -122,16 +83,42 @@ async function initializeDogSelection(container) {
         return;
     }
 
-    container.textContent = "Loading Panchos...";
+    const images = Array.from(container.querySelectorAll("img"));
+
+    if (images.length < 2) {
+        return;
+    }
 
     const dogs = await getDachshunds();
 
-    if (dogs.length === 0) {
+    if (dogs.length < 2) {
         container.textContent = "Could not load Pancho options.";
         return;
     }
 
-    displayDogs(dogs.slice(0, 2), container);
+    images.forEach(function (img, index) {
+
+        img.src = dogs[index];
+        img.alt = "Dachshund Pancho option " + (index + 1);
+
+        img.addEventListener("click", function () {
+            pendingDogChoice = img.src;
+            markSelected(images, img);
+        });
+    });
+
+    
+    const username = getCurrentUsername();
+    const savedDog = getSelectedDog(username);
+
+    if (savedDog) {
+        images.forEach(function (img) {
+            if (img.src === savedDog) {
+                pendingDogChoice = img.src;
+                markSelected(images, img);
+            }
+        });
+    }
 }
 
 function displaySelectedDog(imageElement, username) {
@@ -148,17 +135,33 @@ function displaySelectedDog(imageElement, username) {
 function confirmPancho() {
 
     const username = getCurrentUsername();
-    const selectedDog = getSelectedDog(username);
+    const nameError = document.getElementById("nameError");
 
     if (!username) {
-        alert("Enter a username first.");
+
+        if (nameError) {
+            nameError.textContent = "Please enter a username before confirming your Pancho.";
+        }
+
+        const nameInput = document.getElementById("name");
+
+        if (nameInput) {
+            nameInput.focus();
+        }
+
         return;
     }
 
-    if (!selectedDog) {
+    if (!pendingDogChoice) {
         alert("Choose a Pancho first!");
         return;
     }
 
-    alert("Pancho confirmed for " + username + "! Head to the home page to see it.");
+    if (nameError) {
+        nameError.textContent = "";
+    }
+
+    saveSelectedDog(pendingDogChoice, username);
+
+    alert("Pancho confirmed for " + username + "! It'll be waiting for you on the home page.");
 }
