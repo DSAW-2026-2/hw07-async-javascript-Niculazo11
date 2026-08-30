@@ -5,6 +5,17 @@ import {
 } from "./validation.js";
 
 import { initializeCosmetics } from "./cosmetics.js";
+import { showLoading, showSuccess, showError, clearStatus } from "./panchoStatus.js";
+
+
+// Small helper so a loading state is guaranteed to actually be visible for
+// at least `ms` milliseconds, instead of flashing for 0ms when the real
+// work (validation, localStorage save, a fast fetch) finishes instantly.
+function wait(ms) {
+    return new Promise(function (resolve) {
+        window.setTimeout(resolve, ms);
+    });
+}
 
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -185,18 +196,85 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     if (dogSelectionContainer) {
-        initializeDogSelection(dogSelectionContainer);
+
+        showLoading();
+
+        // Show the loading banner for at least 600ms, even if the fetch
+        // resolves faster than that.
+        Promise.all([
+            initializeDogSelection(dogSelectionContainer),
+            wait(600)
+        ]).then(function (results) {
+
+            const success = results[0];
+
+            if (success) {
+                clearStatus();
+            } else {
+                showError();
+            }
+        });
     }
 
     if (selectedDogImage) {
         displaySelectedDog(selectedDogImage);
     }
 
+    const confirmPawLink = document.getElementById("confirmPawLink");
     const confirmPaw = document.getElementById("confirm-paw");
 
-    if (confirmPaw) {
-        confirmPaw.addEventListener("click", function () {
-            confirmPancho();
+    if (confirmPawLink && confirmPaw) {
+
+        confirmPawLink.addEventListener("click", async function (event) {
+
+            // Don't navigate yet — only go to the main page once we know
+            // the whole form is valid AND the selection actually saved.
+            event.preventDefault();
+
+            const nameInputEl = document.getElementById("name");
+            const emailInputEl = document.getElementById("email");
+            const passwordInputEl = document.getElementById("password");
+
+            const nameErrorEl = document.getElementById("nameError");
+            const emailErrorEl = document.getElementById("emailError");
+            const passwordErrorEl = document.getElementById("passwordError");
+
+            const nameMessage = nameInputEl ? validateName(nameInputEl.value) : "";
+            const emailMessage = emailInputEl ? validateEmail(emailInputEl.value) : "";
+            const passwordMessage = passwordInputEl ? validatePassword(passwordInputEl.value) : "";
+
+            if (nameErrorEl) nameErrorEl.textContent = nameMessage;
+            if (emailErrorEl) emailErrorEl.textContent = emailMessage;
+            if (passwordErrorEl) passwordErrorEl.textContent = passwordMessage;
+
+            if (nameMessage !== "" || emailMessage !== "" || passwordMessage !== "") {
+                showError("Please complete the form correctly first.");
+                return;
+            }
+
+            showLoading();
+
+            // Keep the loading banner visible for a moment before showing
+            // the result — confirming/saving is instant, so without this
+            // pause the loading state would never actually get painted.
+            await wait(700);
+
+            const result = confirmPancho();
+
+            if (result.success) {
+
+                showSuccess();
+
+                // 1.5s so the success banner is clearly visible before navigating.
+                window.setTimeout(function () {
+                    window.location.href = confirmPawLink.href;
+                }, 1000);
+
+            } else {
+
+                showError(result.message);
+            }
+
         });
     }
 

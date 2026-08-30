@@ -1,17 +1,21 @@
 "use strict";
 
-
+// Full (non-random) list of images for the breed. Every visitor gets the
+// same fixed pair of Pancho models, since we always take the first two.
 const DOG_LIST_URL = "https://dog.ceo/api/breed/dachshund/images";
 
-
+// Selections are stored per user: "selectedPancho_<username>"
 const SELECTED_DOG_PREFIX = "selectedPancho_";
 
-
+// Reuses the same localStorage key the join form on index.html already saves,
+// so a user who joined there doesn't have to type their name again here.
 const CURRENT_USER_KEY = "name";
 
-
+// Tailwind classes used to highlight whichever image is currently picked
+// (not yet confirmed with the paw).
 const SELECTED_CLASSES = ["ring-4", "ring-yellow-400"];
 
+// The image URL the user has clicked but not yet confirmed with the paw.
 let pendingDogChoice = null;
 
 async function getDachshunds() {
@@ -77,23 +81,25 @@ function markSelected(images, chosenImage) {
     });
 }
 
+// Loads the fixed pair of dachshund images into the given container and
+// wires up click-to-select. Returns true/false so the caller (main.js)
+// can decide what loading/error UI to show.
 async function initializeDogSelection(container) {
 
     if (!container) {
-        return;
+        return false;
     }
 
     const images = Array.from(container.querySelectorAll("img"));
 
     if (images.length < 2) {
-        return;
+        return false;
     }
 
     const dogs = await getDachshunds();
 
     if (dogs.length < 2) {
-        container.textContent = "Could not load Pancho options.";
-        return;
+        return false;
     }
 
     images.forEach(function (img, index) {
@@ -107,7 +113,7 @@ async function initializeDogSelection(container) {
         });
     });
 
-    
+    // If this user already has a saved Pancho, show it pre-selected.
     const username = getCurrentUsername();
     const savedDog = getSelectedDog(username);
 
@@ -119,6 +125,8 @@ async function initializeDogSelection(container) {
             }
         });
     }
+
+    return true;
 }
 
 function displaySelectedDog(imageElement, username) {
@@ -132,6 +140,8 @@ function displaySelectedDog(imageElement, username) {
     imageElement.src = selectedDog;
 }
 
+// Validates + saves the pending choice. Returns { success, message } instead
+// of alerting, so main.js can drive the loading/success/error UI.
 function confirmPancho() {
 
     const username = getCurrentUsername();
@@ -149,19 +159,22 @@ function confirmPancho() {
             nameInput.focus();
         }
 
-        return;
+        return { success: false, message: "Enter a username first." };
     }
 
     if (!pendingDogChoice) {
-        alert("Choose a Pancho first!");
-        return;
+        return { success: false, message: "Choose a Pancho first!" };
     }
 
     if (nameError) {
         nameError.textContent = "";
     }
 
-    saveSelectedDog(pendingDogChoice, username);
+    const saved = saveSelectedDog(pendingDogChoice, username);
 
-    alert("Pancho confirmed for " + username + "! It'll be waiting for you on the home page.");
+    if (!saved) {
+        return { success: false, message: "Could not save your Pancho." };
+    }
+
+    return { success: true, message: "Pancho confirmed for " + username + "!" };
 }
