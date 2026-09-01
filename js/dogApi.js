@@ -11,6 +11,10 @@ const SELECTED_DOG_PREFIX = "selectedPancho_";
 // so a user who joined there doesn't have to type their name again here.
 const CURRENT_USER_KEY = "name";
 
+// Fallback cache of the last successfully fetched pair of dog images, used
+// when the API call fails.
+const DOG_CACHE_KEY = "cachedDachshundImages";
+
 // Tailwind classes used to highlight whichever image is currently picked
 // (not yet confirmed with the paw).
 const SELECTED_CLASSES = ["ring-4", "ring-yellow-400"];
@@ -18,6 +22,14 @@ const SELECTED_CLASSES = ["ring-4", "ring-yellow-400"];
 // The image URL the user has clicked but not yet confirmed with the paw.
 let pendingDogChoice = null;
 
+// The single source of truth for fetching (and caching) the dog images.
+// Returns { images, fromCache }:
+//   - On a successful fetch: images from the API, fromCache: false, and the
+//     result is saved to localStorage for next time.
+//   - On a failed fetch with a cache available: the cached images,
+//     fromCache: true.
+//   - On a failed fetch with no cache: empty images, fromCache: false —
+//     callers should treat this exactly like the old "no dogs" error case.
 async function getDachshunds() {
 
     try {
@@ -31,10 +43,27 @@ async function getDachshunds() {
         const allImages = data.message || [];
 
         // Always the same two: the first two images in the breed's fixed list.
-        return allImages.slice(0, 2);
+        const dogs = allImages.slice(0, 2);
+
+        if (dogs.length === 2) {
+            localStorage.setItem(DOG_CACHE_KEY, JSON.stringify(dogs));
+        }
+
+        return { images: dogs, fromCache: false };
     } catch (error) {
         console.error("Dog API error:", error);
-        return [];
+
+        const cached = localStorage.getItem(DOG_CACHE_KEY);
+
+        if (cached) {
+            try {
+                return { images: JSON.parse(cached), fromCache: true };
+            } catch (parseError) {
+                console.error("Cached dog data was corrupted:", parseError);
+            }
+        }
+
+        return { images: [], fromCache: false };
     }
 }
 
@@ -81,6 +110,18 @@ function markSelected(images, chosenImage) {
     });
 }
 
+// Shows/hides the "saving data" label used when we're displaying cached
+// (rather than freshly fetched) images. Safe no-op if the element isn't
+// on the page — add <p id="dogStatus"></p> near the dog images to use it.
+function setDogStatusLabel(text) {
+
+    const statusLabel = document.getElementById("dogStatus");
+
+    if (statusLabel) {
+        statusLabel.textContent = text || "";
+    }
+}
+
 // Loads the fixed pair of dachshund images into the given container and
 // wires up click-to-select. Returns true/false so the caller (main.js)
 // can decide what loading/error UI to show.
@@ -96,11 +137,18 @@ async function initializeDogSelection(container) {
         return false;
     }
 
-    const dogs = await getDachshunds();
+    const { images: dogs, fromCache } = await getDachshunds();
 
     if (dogs.length < 2) {
+        // No fresh data AND no cache — fall through to the existing
+        // error handling already wired up around this false return.
+        setDogStatusLabel("");
         return false;
     }
+
+    // Cache exists but the live fetch failed: show the cached pair plus
+    // a visible "saving data" label instead of the normal error state.
+    setDogStatusLabel(fromCache ? "Saving data..." : "");
 
     images.forEach(function (img, index) {
 
